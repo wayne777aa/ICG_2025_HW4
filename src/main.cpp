@@ -96,6 +96,10 @@ void model_setup(){
 
     modelMatrix = glm::mat4(1.0f);
     modelMatrix = glm::scale(modelMatrix, glm::vec3(10.0f));
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(260.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, -5.0f));
+
 }
 
 void camera_setup(){
@@ -111,7 +115,7 @@ void camera_setup(){
     camera.maxOrbitPitch = 80.0f;
     camera.target = glm::vec3(0.0f);
     camera.enableAutoOrbit = true;
-    camera.autoOrbitSpeed = 20.0f;
+    camera.autoOrbitSpeed = 0.0f;
 
     updateCamera();
 }
