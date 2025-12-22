@@ -91,10 +91,28 @@ bool staticModelStopped = false;
 bool startCrash = false;// for scene 5,7 GS process
 float sphereT = 0.0f;
 bool startAnimation = true;
+
+// explosion effect
+bool explodeActive = false;
+float explodeStart = 0.0f;
+
+float explodeBlastTime = 0.6f;
+float explodeHoldTime = 0.3f;
+float explodeReturnTime = 1.0f;
+
+float explodeStrength = 200.0f;
+
+// wire frame mode
+shader_program_t* wireShader = nullptr;
+bool enableWire = false;
+bool wireXRay = false; // 整個透出線框
+float wireWidth = 1.0f;
+glm::vec3 wireColor = glm::vec3(1.0f, 0.5f, 0.2f);
+bool wireOnly = false;  // true: 只畫 wire，不畫原本 model
+
 void model_setup(){
 #if defined(__linux__) || defined(__APPLE__)
     std::string obj_path = "..\\..\\src\\asset\\obj\\Mei_Run.obj";
-    std::string cube_obj_path = "..\\..\\src\\asset\\obj\\cube.obj";
     std::string texture_path = "..\\..\\src\\asset\\texture\\Mei_TEX.png";
 #else
     std::string obj_path = "..\\..\\src\\asset\\obj\\v2reimu_low.obj";
@@ -209,7 +227,7 @@ void shader_setup(){
 #endif
 
     std::vector<std::string> shadingMethod = {
-        "default", "bling-phong", "gouraud", "metallic", "glass_schlick"
+        "default", "bling-phong"
     };
 
     for(int i=0; i<shadingMethod.size(); i++){
@@ -222,6 +240,33 @@ void shader_setup(){
         shaderProgram->add_shader(fpath, GL_FRAGMENT_SHADER);
         shaderProgram->link_shader();
         shaderPrograms.push_back(shaderProgram);
+    }
+
+    // ===== explosion program (index = 2) =====
+    {
+        auto prog = new shader_program_t();
+        prog->create();
+        std::string v = shaderDir + "explode.vert";
+        std::string g = shaderDir + "explode.geom";
+        std::string f = shaderDir + "explode.frag";
+        prog->add_shader(v, GL_VERTEX_SHADER);
+        prog->add_shader(g, GL_GEOMETRY_SHADER);
+        prog->add_shader(f, GL_FRAGMENT_SHADER);
+        prog->link_shader();
+        shaderPrograms.push_back(prog);
+    }
+
+    // ===== wireframe program (index = 6) =====
+    {
+        std::string v = shaderDir + "wire.vert";
+        std::string g = shaderDir + "wire.geom";
+        std::string f = shaderDir + "wire.frag";
+        wireShader = new shader_program_t();
+        wireShader->create();
+        wireShader->add_shader(v, GL_VERTEX_SHADER);
+        wireShader->add_shader(g, GL_GEOMETRY_SHADER);
+        wireShader->add_shader(f, GL_FRAGMENT_SHADER);
+        wireShader->link_shader();
     }
 }
 
@@ -427,36 +472,43 @@ void render(){
     glm::mat4 view = glm::lookAt(camera.position - glm::vec3(0.0f, 0.2f, 0.1f), camera.position + camera.front, camera.up);
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 2000.0f);
 
-    // set matrix for view, projection, model transformation
-    shaderPrograms[shaderProgramIndex]->use();
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("model", modelMatrix);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("view", view);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("projection", projection);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("viewPos", camera.position - glm::vec3(0.0f, 0.2f, 0.1f));
+    if (!wireOnly) {
+        // set matrix for view, projection, model transformation
+        shaderPrograms[shaderProgramIndex]->use();
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("model", modelMatrix);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("view", view);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("projection", projection);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("viewPos", camera.position - glm::vec3(0.0f, 0.2f, 0.1f));
 
-    // TODO: set additional uniform value for shader program
-    // ===== TODO1: Load all uniform parameters =====
+        // TODO: set additional uniform value for shader program
+        // ===== TODO1: Load all uniform parameters =====
 
-    // light
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("lightPos", light.position);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("lightAmbient", light.ambient);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("lightDiffuse", light.diffuse);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("lightSpecular", light.specular);
+        // light
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("lightPos", light.position);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("lightAmbient", light.ambient);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("lightDiffuse", light.diffuse);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("lightSpecular", light.specular);
 
-    // material
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("matAmbient", material.ambient);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("matDiffuse", material.diffuse);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("matSpecular", material.specular);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("matGloss", material.gloss);
+        // material
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("matAmbient", material.ambient);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("matDiffuse", material.diffuse);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("matSpecular", material.specular);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("matGloss", material.gloss);
 
-    // metallic shader (bias=0.2, alpha=0.4)
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("bias", glm::vec3(0.2f, 0.2f, 0.2f));
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("alpha", 0.4f);
+        // For model texture sampler (if exists)
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("texture_diffuse1", 0);
 
-    // glass (AIR=1, GLASS=1.52)
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("AIR_coeff", 1.0f);
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("GLASS_coeff", 1.52f);
-
+        // explosion shader parameters
+        if(shaderProgramIndex == 2){
+            float t = explodeActive ? (currentTime - explodeStart) : 999.0f;
+            shaderPrograms[shaderProgramIndex]->set_uniform_value("uTime", t);
+            shaderPrograms[shaderProgramIndex]->set_uniform_value("uBlastTime", explodeBlastTime);
+            shaderPrograms[shaderProgramIndex]->set_uniform_value("uHoldTime", explodeHoldTime);
+            shaderPrograms[shaderProgramIndex]->set_uniform_value("uReturnTime", explodeReturnTime);
+            shaderPrograms[shaderProgramIndex]->set_uniform_value("uStrength", explodeStrength);
+            if (t > explodeBlastTime+explodeHoldTime+explodeReturnTime) explodeActive = false;
+        }
+    }
     // For model texture sampler (if exists)
     shaderPrograms[shaderProgramIndex]->set_uniform_value("texture_diffuse1", 0);
 
@@ -504,6 +556,31 @@ void render(){
     glBindVertexArray(0);
 
     cubemapShader->release();
+
+    // ===== Render Wireframe Overlay =====
+    if (enableWire && wireShader){
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // 想更像光 → (SRC_ALPHA, ONE)
+        glDepthMask(GL_FALSE);
+
+        if (wireXRay) glDisable(GL_DEPTH_TEST);  // 透視線框（像你圖）
+        else          glEnable(GL_DEPTH_TEST);   // 只畫表面線（會比較「乾淨」）
+
+        wireShader->use();
+        wireShader->set_uniform_value("model", modelMatrix);
+        wireShader->set_uniform_value("view", view);
+        wireShader->set_uniform_value("projection", projection);
+        wireShader->set_uniform_value("uLineColor", wireColor);
+        wireShader->set_uniform_value("uLineWidth", wireWidth);
+
+        staticModel->draw();
+
+        wireShader->release();
+
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+    }
 }
 
 int main() {
@@ -552,6 +629,7 @@ int main() {
         delete shader;
     }
     delete cubemapShader;
+    delete wireShader;
 
     glfwTerminate();
     return 0;
@@ -593,23 +671,22 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_0 && (action == GLFW_REPEAT || action == GLFW_PRESS)) 
         shaderProgramIndex = 0;
     if (key == GLFW_KEY_1 && (action == GLFW_REPEAT || action == GLFW_PRESS)) 
-        shaderProgramIndex = 1;
-    if (key == GLFW_KEY_2 && (action == GLFW_REPEAT || action == GLFW_PRESS)) 
-        shaderProgramIndex = 2;
+        shaderProgramIndex = !shaderProgramIndex;
+     if (key == GLFW_KEY_E && action == GLFW_PRESS) {
+        enableWire = false;
+        wireOnly = false;
+        explodeActive = true;
+        explodeStart = glfwGetTime();
+        shaderProgramIndex = 2; // 切到 explosion shader
+    }
     if (key == GLFW_KEY_3 && action == GLFW_PRESS)
-        shaderProgramIndex = 3;
+        if (!wireOnly) enableWire = !enableWire;
     if (key == GLFW_KEY_4 && action == GLFW_PRESS)
-        shaderProgramIndex = 4;
-    if (key == GLFW_KEY_5 && action == GLFW_PRESS)
-        shaderProgramIndex = 5;
-    if (key == GLFW_KEY_6 && action == GLFW_PRESS)
-        shaderProgramIndex = 6;
-    if (key == GLFW_KEY_7 && action == GLFW_PRESS)
-        shaderProgramIndex = 7;
-    if (key == GLFW_KEY_8 && action == GLFW_PRESS)
-        shaderProgramIndex = 8;
-    if( key == GLFW_KEY_9 && action == GLFW_PRESS)
-        isCube = !isCube;
+        wireXRay = !wireXRay;
+    if (key == GLFW_KEY_5 && action == GLFW_PRESS) {
+        wireOnly = !wireOnly;            // 只畫 wire / 正常模式
+        if (wireOnly) enableWire = true; // 進 wireOnly 時，強制確保 wire 開著
+    }
 }
 
 void framebufferSizeCallback(GLFWwindow *window, int width, int height) {
