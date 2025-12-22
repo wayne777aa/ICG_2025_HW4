@@ -79,6 +79,16 @@ float currentTime = 0.0f;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
+// explosion effect
+bool explodeActive = false;
+float explodeStart = 0.0f;
+
+float explodeBlastTime = 0.6f;
+float explodeHoldTime = 0.3f;
+float explodeReturnTime = 1.0f;
+
+float explodeStrength = 200.0f;
+
 void model_setup(){
 #if defined(__linux__) || defined(__APPLE__)
     std::string obj_path = "..\\..\\src\\asset\\obj\\Mei_Run.obj";
@@ -176,6 +186,20 @@ void shader_setup(){
         shaderProgram->add_shader(fpath, GL_FRAGMENT_SHADER);
         shaderProgram->link_shader();
         shaderPrograms.push_back(shaderProgram);
+    }
+
+    // ===== explosion program (index = 5) =====
+    {
+        auto prog = new shader_program_t();
+        prog->create();
+        std::string v = shaderDir + "explode.vert";
+        std::string g = shaderDir + "explode.geom";
+        std::string f = shaderDir + "explode.frag";
+        prog->add_shader(v, GL_VERTEX_SHADER);
+        prog->add_shader(g, GL_GEOMETRY_SHADER);
+        prog->add_shader(f, GL_FRAGMENT_SHADER);
+        prog->link_shader();
+        shaderPrograms.push_back(prog);
     }
 }
 
@@ -283,6 +307,17 @@ void render(){
 
     // For model texture sampler (if exists)
     shaderPrograms[shaderProgramIndex]->set_uniform_value("texture_diffuse1", 0);
+
+    // explosion shader parameters
+    if(shaderProgramIndex == 5){
+        float t = explodeActive ? (currentTime - explodeStart) : 999.0f;
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("uTime", t);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("uBlastTime", explodeBlastTime);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("uHoldTime", explodeHoldTime);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("uReturnTime", explodeReturnTime);
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("uStrength", explodeStrength);
+        if (t > explodeBlastTime+explodeHoldTime+explodeReturnTime) explodeActive = false;
+    }
 
     // specifying sampler for shader program
 
@@ -413,8 +448,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         shaderProgramIndex = 3;
     if (key == GLFW_KEY_4 && action == GLFW_PRESS)
         shaderProgramIndex = 4;
-    if (key == GLFW_KEY_5 && action == GLFW_PRESS)
-        shaderProgramIndex = 5;
+     if (key == GLFW_KEY_E && action == GLFW_PRESS) {
+        explodeActive = true;
+        explodeStart = glfwGetTime();
+        shaderProgramIndex = 5; // 切到 explosion shader
+    }
     if (key == GLFW_KEY_6 && action == GLFW_PRESS)
         shaderProgramIndex = 6;
     if (key == GLFW_KEY_7 && action == GLFW_PRESS)

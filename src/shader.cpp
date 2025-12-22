@@ -26,6 +26,9 @@ void shader_program_t::add_shader(std::string& filepath, unsigned int type){
     else if(type == GL_FRAGMENT_SHADER){
         std::cout << "adding frag shader from " << filepath << std::endl;
     }
+    else if(type == GL_GEOMETRY_SHADER){
+        std::cout << "adding geom shader from " << filepath << std::endl;
+    }
     else{
         std::cout << "unknown shader type" << std::endl; 
         return;
