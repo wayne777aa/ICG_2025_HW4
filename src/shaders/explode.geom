@@ -38,23 +38,14 @@ vec3 hashDir(int id){
 }
 
 void main(){
-    // float t = (uDuration <= 0.0001) ? 1.0 : clamp(uTime / uDuration, 0.0, 1.0);
-
-    // // 讓位移在中段最大：t*(1-t)
-    // // float ease = (t * (1.0 - t)) * 4.0;
-
-    // // easeOutQuart：一開始衝很快，後面慢慢收尾
-    // float ease = 1.0 - pow(1.0 - t, 4.0);
-
-
-    // float amp = uStrength * ease;
-
     float t = max(uTime, 0.0);
     float amp = 0.0;
 
     float t0 = uBlastTime;
     float t1 = uBlastTime + uHoldTime;
-    float t2 = uBlastTime + uHoldTime + uReturnTime;    
+    float t2 = uBlastTime + uHoldTime + uReturnTime;   
+    float total = t2;                 // uBlast + uHold + uReturn
+    float t01 = clamp(t / total, 0.0, 1.0); 
     if (t < t0) {
         float x = t / uBlastTime;
         // 爆出去：前快後慢（easeOut）
@@ -90,7 +81,7 @@ void main(){
         gout.wPos = p;
         gout.wN   = gin[i].wN;
         gout.uv   = gin[i].uv;
-        gout.t  = t;
+        gout.t  = t01;
 
         gl_Position = projection * view * vec4(p, 1.0);
         EmitVertex();

@@ -92,23 +92,38 @@ bool startCrash = false;// for scene 5,7 GS process
 float sphereT = 0.0f;
 bool startAnimation = true;
 
-// explosion effect
-bool explodeActive = false;
-float explodeStart = 0.0f;
-
+// explosion effect parameters
 float explodeBlastTime = 0.6f;
-float explodeHoldTime = 0.3f;
-float explodeReturnTime = 1.0f;
+float explodeHoldTime = 0.5f;
+float explodeReturnTime = 2.0f;
 
 float explodeStrength = 200.0f;
+// ===== model2 only (explosion + wire) =====
+bool model2EnableWire = false; // 是否畫線框（wire pass）
+bool s5TriggeredExplode = false;
+
+bool  model2ExplodeActive = false; // 實體爆出去
+float model2ExplodeStart  = 0.0f;
+
+bool  model2WireOnly      = false; // 不畫實體，只畫線
+bool  model2WireCollapse  = false; // 線條縮回中
+float model2WireStart     = 0.0f;
+
+// ===== scene7 wire-explode -> swap to model1 =====
+bool  s7WireExploding = false;
+float s7WireStart = 0.0f;
+
+bool  s7Holding = false;       // 最大狀態停住
+float s7HoldStart = 0.0f;      // hold 起點
+
+bool  s7BecameModel1 = false;  // scene7 後半段：用 model1 取代 model2
+bool  s7Collapsing = false;
+float s7CollapseStart = 0.0f;
 
 // wire frame mode
 shader_program_t* wireShader = nullptr;
-bool enableWire = false;
-bool wireXRay = false; // 整個透出線框
 float wireWidth = 1.0f;
-glm::vec3 wireColor = glm::vec3(1.0f, 0.5f, 0.2f);
-bool wireOnly = false;  // true: 只畫 wire，不畫原本 model
+glm::vec3 wireColor = glm::vec3(0.9f, 0.4f, 0.1f);
 
 void model_setup(){
 #if defined(__linux__) || defined(__APPLE__)
@@ -196,8 +211,9 @@ void material_setup(){
     material.specular = glm::vec3(0.7);
     material.gloss = 50.0;
 }
+
 int getScene(){
-    //return 6;
+    // return 7;
     if(timeCounter < 4.0f)
         return 1;
     else if(timeCounter < 8.0f)
@@ -219,6 +235,7 @@ int getScene(){
         return 0;
     }
 }
+
 void shader_setup(){
 #if defined(__linux__) || defined(__APPLE__)
     std::string shaderDir = "..\\..\\src\\shaders\\";
@@ -256,7 +273,7 @@ void shader_setup(){
         shaderPrograms.push_back(prog);
     }
 
-    // ===== wireframe program (index = 6) =====
+    // ===== wireframe program =====
     {
         std::string v = shaderDir + "wire.vert";
         std::string g = shaderDir + "wire.geom";
@@ -324,8 +341,7 @@ void setup(){
     glCullFace(GL_BACK);
 }
 
-void update(){
-    
+void update(){   
     currentTime = glfwGetTime();
     deltaTime = currentTime - lastFrame;
     lastFrame = currentTime;
@@ -345,6 +361,30 @@ void update(){
         camera.pitch = 10.0f;
         camera.radius = 400.0f;
         updateCamera();
+
+        // 只重置「這一幕會用到的狀態」
+        if(scene == 5){
+            s5TriggeredExplode  = false;
+            model2ExplodeActive = false;
+            model2WireOnly      = false;
+            model2EnableWire    = false;
+        }
+        if(scene == 7){
+            s7WireExploding = false;
+            s7WireStart     = 0.0f;
+
+            s7Holding       = false;
+            s7HoldStart     = 0.0f;
+            s7BecameModel1  = false;
+
+            s7Collapsing    = false;
+            s7CollapseStart = 0.0f;
+
+            model2ExplodeActive = false;
+            model2WireOnly      = true;
+            model2EnableWire    = true;
+            model2WireCollapse  = false;
+        }
     }
     if (camera.enableAutoOrbit) {
         float yawDelta = camera.autoOrbitSpeed * deltaTime;
@@ -355,7 +395,7 @@ void update(){
         modelMatrix2 = glm::scale(modelMatrix2, glm::vec3(1.0f, 1.0f, 0.925f + abs(fmod(currentTime * 5.0f, 2.0f) - 1.0f) * 0.15f));
         modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(model2RotateSpeed * currentTime), glm::vec3(0.0f, 0.0f, 1.0f));
     }
-    if(scene == 2){
+    if (scene == 2){
         modelMatrix2 = originModelMatrix2;
         modelMatrix2 = glm::translate(modelMatrix2, glm::vec3(-60.0f, 25.0f , 10.0f));
         modelMatrix2 = glm::scale(modelMatrix2, glm::vec3(1.0f, 1.0f, 0.925f + abs(fmod(currentTime * 5.0f, 2.0f) - 1.0f) * 0.15f));
@@ -379,7 +419,7 @@ void update(){
         camera.radius = 100.0f;
         updateCamera();
     }
-    if(scene == 4 || scene == 6){
+    if (scene == 4 || scene == 6){
         float timeInScene = currentTime - sceneStartTime;
         float shootDuration = 1.0f;
         static float rx, ry, rz;
@@ -426,7 +466,7 @@ void update(){
         sphereMatrix = glm::translate(sphereMatrix, currentSpherePos);
         sphereMatrix = glm::scale(sphereMatrix, glm::vec3(20.0f));
     }
-    if(scene == 5 || scene == 7){
+    if (scene == 5 || scene == 7){
         float timeInScene = currentTime - sceneStartTime;
         static float rx, ry, rz;
         static int lastChangeTime = 0;
@@ -450,10 +490,99 @@ void update(){
         if(!startCrash){
             modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
         }else{
-            modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(210.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            float faceAngle = (scene == 7) ? 350.0f : 210.0f;
+            modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(faceAngle), glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+        // 觸發（例如 startCrash 的那一刻）
+        if (scene == 5 && startCrash && !s5TriggeredExplode) {
+
+            model2ExplodeActive = true;
+            model2ExplodeStart  = currentTime;
+
+            model2WireOnly     = false;
+            model2WireCollapse = false;
+
+            s5TriggeredExplode = true;
+        }
+
+        // 爆到最外圈：t >= explodeBlastTime
+        if (model2ExplodeActive) {
+            float t = currentTime - model2ExplodeStart;
+            if (t >= explodeBlastTime + explodeHoldTime) {
+                model2ExplodeActive = false;
+                model2WireOnly     = true;   // 從現在開始不畫實體
+                model2WireCollapse = true;   // 線條開始縮回
+                model2EnableWire = true;
+                model2WireStart    = currentTime;
+            }
+        }
+
+        // 線條縮回結束（你可以選擇：縮回後保持線條，或恢復實體）
+        if (model2WireCollapse) {
+            float x = (currentTime - model2WireStart) / explodeReturnTime;
+            if (x >= 1.0f) {
+                model2WireCollapse = false;
+
+                // 縮回後「保持線條」
+                model2WireOnly = true;
+                model2EnableWire   = true;   // 保持畫線
+
+            }
+        }
+
+        if(scene == 7){
+            float timeInScene = currentTime - sceneStartTime;
+            float rotateDuration = 1.0f; // 你原本用來決定 startCrash 的時間
+
+            bool startCrashLocal = (timeInScene > rotateDuration);
+
+            // 1) 觸發：第七幕「一開始線條爆炸」
+            if(startCrashLocal && !s7WireExploding && !s7Holding && !s7BecameModel1 && !s7Collapsing){
+                s7WireExploding = true;
+                s7WireStart = currentTime;
+
+                model2ExplodeActive = false;
+                model2WireOnly      = true;
+                model2EnableWire    = true;
+            }
+
+            // 2) 爆到最大：進入 hold（不要立刻 swap）
+            if(s7WireExploding){
+                float t = currentTime - s7WireStart;
+                if(t >= explodeBlastTime){
+                    s7WireExploding = false;
+
+                    s7Holding   = true;       // 進入 hold
+                    s7HoldStart = currentTime;
+                }
+            }
+
+            // 3) hold 結束：才 swap 成 model1，並開始縮回
+            if(s7Holding){
+                float th = currentTime - s7HoldStart;
+                if(th >= explodeHoldTime){     // 你想停多久就改 explodeHoldTime
+                    s7Holding = false;
+
+                    s7BecameModel1 = true;         // 換 model1
+                    s7Collapsing   = true;         // 開始縮回
+                    s7CollapseStart = currentTime;
+                }
+            }
+
+            // 4) 縮回結束：關掉 wire，回到正常 model1
+            if(s7Collapsing){
+                float x = (currentTime - s7CollapseStart) / explodeReturnTime;
+                if(x >= 1.0f){
+                    s7Collapsing = false;
+
+                    model2EnableWire = false;
+                    model2WireOnly   = false;
+
+                }
+            }
         }
     }
-    if(scene == 8){
+    if (scene == 8){
         modelMatrix2 = originModelMatrix2;
         modelMatrix2 = glm::scale(modelMatrix2, glm::vec3(1.0f, 1.0f, 0.925f + abs(fmod(currentTime * 5.0f, 2.0f) - 1.0f) * 0.15f));
         modelMatrix2 = glm::translate(modelMatrix2, glm::vec3(-10.0f, 16.0f , 0.0f));
@@ -472,108 +601,210 @@ void render(){
     glm::mat4 view = glm::lookAt(camera.position - glm::vec3(0.0f, 0.2f, 0.1f), camera.position + camera.front, camera.up);
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 2000.0f);
 
-    if (!wireOnly) {
-        // set matrix for view, projection, model transformation
-        shaderPrograms[shaderProgramIndex]->use();
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("model", modelMatrix);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("view", view);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("projection", projection);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("viewPos", camera.position - glm::vec3(0.0f, 0.2f, 0.1f));
+    const int scene = getScene();
 
-        // TODO: set additional uniform value for shader program
-        // ===== TODO1: Load all uniform parameters =====
+    auto setCommonUniforms = [&](shader_program_t* sh){
+        sh->set_uniform_value("view", view);
+        sh->set_uniform_value("projection", projection);
+        sh->set_uniform_value("viewPos", camera.position - glm::vec3(0.0f, 0.2f, 0.1f));
 
         // light
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("lightPos", light.position);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("lightAmbient", light.ambient);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("lightDiffuse", light.diffuse);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("lightSpecular", light.specular);
+        sh->set_uniform_value("lightPos", light.position);
+        sh->set_uniform_value("lightAmbient", light.ambient);
+        sh->set_uniform_value("lightDiffuse", light.diffuse);
+        sh->set_uniform_value("lightSpecular", light.specular);
 
         // material
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("matAmbient", material.ambient);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("matDiffuse", material.diffuse);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("matSpecular", material.specular);
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("matGloss", material.gloss);
+        sh->set_uniform_value("matAmbient", material.ambient);
+        sh->set_uniform_value("matDiffuse", material.diffuse);
+        sh->set_uniform_value("matSpecular", material.specular);
+        sh->set_uniform_value("matGloss", material.gloss);
 
-        // For model texture sampler (if exists)
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("texture_diffuse1", 0);
+        // texture sampler
+        sh->set_uniform_value("texture_diffuse1", 0);
+    };
 
-        // explosion shader parameters
-        if(shaderProgramIndex == 2){
-            float t = explodeActive ? (currentTime - explodeStart) : 999.0f;
-            shaderPrograms[shaderProgramIndex]->set_uniform_value("uTime", t);
-            shaderPrograms[shaderProgramIndex]->set_uniform_value("uBlastTime", explodeBlastTime);
-            shaderPrograms[shaderProgramIndex]->set_uniform_value("uHoldTime", explodeHoldTime);
-            shaderPrograms[shaderProgramIndex]->set_uniform_value("uReturnTime", explodeReturnTime);
-            shaderPrograms[shaderProgramIndex]->set_uniform_value("uStrength", explodeStrength);
-            if (t > explodeBlastTime+explodeHoldTime+explodeReturnTime) explodeActive = false;
+    shader_program_t* defaultSh = shaderPrograms[0];
+    shader_program_t* explodeSh = shaderPrograms[2];
+
+    // =========================
+    // 1) Draw model1 (always solid, default shader)
+    // =========================
+    if (scene == 7 && s7BecameModel1 && s7Collapsing) {
+        // 這裡用 explode shader 讓 model1 維持爆開並縮回
+        explodeSh->use();
+        setCommonUniforms(explodeSh);
+        explodeSh->set_uniform_value("model", modelMatrix2);
+
+        float t;
+        if (s7Collapsing) {
+            float r = glm::clamp((currentTime - s7CollapseStart), 0.0f, explodeReturnTime);
+            t = explodeBlastTime + explodeHoldTime + r; // 直接走 return 段
+        } else {
+            // 理論上不會進來（因為你 swap 後立刻進 collapsing），但保險
+            t = explodeBlastTime + 1e-4f;
+        }
+
+        explodeSh->set_uniform_value("uTime", t);
+        explodeSh->set_uniform_value("uBlastTime", explodeBlastTime);
+        explodeSh->set_uniform_value("uHoldTime", explodeHoldTime);
+        explodeSh->set_uniform_value("uReturnTime", explodeReturnTime);
+        explodeSh->set_uniform_value("uStrength", explodeStrength);
+
+        staticModel->draw();
+        explodeSh->release();
+    }
+    if(scene == 2 || scene == 3 || scene == 4 || scene == 6 || scene == 8 || (scene == 7 && s7BecameModel1 && !s7Collapsing)){
+        defaultSh->use();
+        setCommonUniforms(defaultSh);
+        defaultSh->set_uniform_value("model", (scene == 7 && s7BecameModel1) ? modelMatrix2 : modelMatrix);
+        staticModel->draw();
+        defaultSh->release();
+    }
+
+    if(scene == 8){
+        defaultSh->use();
+        setCommonUniforms(defaultSh);
+        defaultSh->set_uniform_value("model", modelMatrix2);
+        staticModel->draw();
+        defaultSh->release();
+    }
+
+    // =========================
+    // 2) Draw model2 (state-dependent)
+    //    - exploding: explode shader
+    //    - wireOnly:  do NOT draw solid
+    //    - otherwise: default shader
+    // =========================
+    if(scene == 1 || scene == 2 || scene == 4 || scene == 5 || scene == 6 || (scene == 7 && !s7BecameModel1)){
+        if (model2ExplodeActive) {
+            explodeSh->use();
+            setCommonUniforms(explodeSh);
+            explodeSh->set_uniform_value("model", modelMatrix2);
+
+            float t = currentTime - model2ExplodeStart;
+
+            // 你想「爆到最外圈就換線條」：這裡建議把實體爆炸卡在 blastTime
+            // （不跑回來那段）
+            // 卡在 blast+hold 的尾端，避免進入 return 段（你等一下會切 wire）
+            float cap = explodeBlastTime + std::max(0.0f, explodeHoldTime) - 1e-4f;
+            // 避免 holdTime=0 時 cap < blast
+            cap = std::max(cap, explodeBlastTime + 1e-4f);
+
+            t = std::min(t, cap);
+
+            explodeSh->set_uniform_value("uTime", t);
+            explodeSh->set_uniform_value("uBlastTime", explodeBlastTime);
+            explodeSh->set_uniform_value("uHoldTime", explodeHoldTime);
+            explodeSh->set_uniform_value("uReturnTime", explodeReturnTime);
+            explodeSh->set_uniform_value("uStrength", explodeStrength);
+
+            staticModel2->draw();
+            explodeSh->release();
+        }
+        else if (!model2WireOnly) {
+            defaultSh->use();
+            setCommonUniforms(defaultSh);
+            defaultSh->set_uniform_value("model", modelMatrix2);
+            staticModel2->draw();
+            defaultSh->release();
         }
     }
-    // For model texture sampler (if exists)
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("texture_diffuse1", 0);
 
-    // specifying sampler for shader program
-
-    if(getScene() == 2 || getScene() == 3 || getScene() == 4 || getScene() == 6 || getScene() == 8){
-        staticModel->draw();
-    }
-    shaderPrograms[shaderProgramIndex]->set_uniform_value("model", modelMatrix2);
-    if(getScene() == 1 || getScene() == 2 || getScene() == 4 || getScene() == 5 || getScene() == 6 || getScene() == 7){
-        staticModel2->draw();
-    }
-    if(getScene() == 8){
-        staticModel->draw();
-    }
-    if((getScene() == 4 || getScene() == 6) && sphereActive){
-        shaderPrograms[shaderProgramIndex]->set_uniform_value("model", sphereMatrix);
+    // =========================
+    // 3) Draw sphere/cube (keep solid, default shader)
+    // =========================
+    if((scene == 4 || scene == 6) && sphereActive){
+        defaultSh->use();
+        setCommonUniforms(defaultSh);
+        defaultSh->set_uniform_value("model", sphereMatrix);
         cubeModel->draw();
+        defaultSh->release();
     }
-    shaderPrograms[shaderProgramIndex]->release();
 
-    // TODO 
-    // Rendering cubemap environment
-    // Hint:
-    // 1. All the needed things are already set up in cubemap_setup() function.
-    // 2. You can use the vertices in cubemapVertices provided in the header/cube.h
-    // 3. You can use the cubemapShader to render the cubemap 
-    //    (refer to the above code to get an idea of how to use the shader program)
-    // ===== Render Cubemap Environment =====
+    // =========================
+    // 4) Cubemap environment (unchanged)
+    // =========================
     cubemapShader->use();
 
-    // 1. remove translation from the view matrix
     glm::mat4 viewNoTranslate = glm::mat4(glm::mat3(view));
     cubemapShader->set_uniform_value("view", viewNoTranslate);
     cubemapShader->set_uniform_value("projection", projection);
 
-    // 2. bind skybox texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-    cubemapShader->set_uniform_value("skybox", 0);  
+    cubemapShader->set_uniform_value("skybox", 0);
 
-    // 3. draw cube
     glBindVertexArray(cubemapVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glBindVertexArray(0);
 
     cubemapShader->release();
 
-    // ===== Render Wireframe Overlay =====
-    if (enableWire && wireShader){
+    // =========================
+    // 5) Wireframe overlay
+    // =========================
+    if (model2EnableWire && wireShader) {
         glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // 想更像光 → (SRC_ALPHA, ONE)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
         glDepthMask(GL_FALSE);
 
-        if (wireXRay) glDisable(GL_DEPTH_TEST);  // 透視線框（像你圖）
-        else          glEnable(GL_DEPTH_TEST);   // 只畫表面線（會比較「乾淨」）
+        glDisable(GL_DEPTH_TEST); // 想要 XRay 效果就一直 disable，想乾淨就改成條件式
 
         wireShader->use();
-        wireShader->set_uniform_value("model", modelMatrix);
+        wireShader->set_uniform_value("model", modelMatrix2);
         wireShader->set_uniform_value("view", view);
         wireShader->set_uniform_value("projection", projection);
         wireShader->set_uniform_value("uLineColor", wireColor);
         wireShader->set_uniform_value("uLineWidth", wireWidth);
 
-        staticModel->draw();
+        float amp = 0.0f;
+
+        // ===== scene5：外圈 -> 0（縮回）=====
+        if (scene == 5) {
+            if (model2WireCollapse) {
+                float x = (currentTime - model2WireStart) / explodeReturnTime;
+                x = glm::clamp(x, 0.0f, 1.0f);
+                float e = 1.0f - pow(1.0f - x, 3.0f);
+                amp = explodeStrength * (1.0f - e);
+            } else {
+                amp = 0.0f;
+            }
+            wireShader->set_uniform_value("uAmp", amp);
+            staticModel2->draw();
+        }
+
+        if (scene == 6) {
+            amp = 0.0f;
+            wireShader->set_uniform_value("uAmp", amp);
+            staticModel2->draw();
+        }
+
+        // ===== scene7：爆到最大 / 換 model1 / 縮回 =====
+        if (scene == 7) {
+            if (!s7BecameModel1) {
+                // 爆到最大（0 -> strength）
+                if (s7WireExploding) {
+                    float t = currentTime - s7WireStart;
+                    float x = glm::clamp(t / explodeBlastTime, 0.0f, 1.0f);
+
+                    // 跟 scene5 同款：爆出去「一開始快、後面慢」(ease-out cubic)
+                    float e = 1.0f - pow(1.0f - x, 3.0f);
+
+                    amp = explodeStrength * e;
+                }
+                // 最大停住
+                else if (s7Holding) {
+                    amp = explodeStrength;
+                }
+                else {
+                    amp = 0.0f;
+                }
+
+                wireShader->set_uniform_value("uAmp", amp);
+                staticModel2->draw();
+            } 
+        }
 
         wireShader->release();
 
@@ -673,19 +904,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_1 && (action == GLFW_REPEAT || action == GLFW_PRESS)) 
         shaderProgramIndex = !shaderProgramIndex;
      if (key == GLFW_KEY_E && action == GLFW_PRESS) {
-        enableWire = false;
-        wireOnly = false;
-        explodeActive = true;
-        explodeStart = glfwGetTime();
         shaderProgramIndex = 2; // 切到 explosion shader
-    }
-    if (key == GLFW_KEY_3 && action == GLFW_PRESS)
-        if (!wireOnly) enableWire = !enableWire;
-    if (key == GLFW_KEY_4 && action == GLFW_PRESS)
-        wireXRay = !wireXRay;
-    if (key == GLFW_KEY_5 && action == GLFW_PRESS) {
-        wireOnly = !wireOnly;            // 只畫 wire / 正常模式
-        if (wireOnly) enableWire = true; // 進 wireOnly 時，強制確保 wire 開著
     }
 }
 
