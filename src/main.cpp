@@ -51,8 +51,7 @@ struct camera_t{
     float maxOrbitPitch;
     bool enableAutoOrbit;
     float autoOrbitSpeed;
-};
-
+}; 
 // settings
 int SCR_WIDTH = 800;
 int SCR_HEIGHT = 600;
@@ -71,14 +70,27 @@ material_t material;
 camera_t camera;
 
 Object* staticModel = nullptr;
+Object* staticModel2 = nullptr;
 Object* cubeModel = nullptr;
 bool isCube = false;
 glm::mat4 modelMatrix(1.0f);
-
+glm::mat4 modelMatrix2(1.0f);
+glm::mat4 originModelMatrix(1.0f);
+glm::mat4 originModelMatrix2(1.0f);
+glm::mat4 sphereMatrix(1.0f);
+float model2RotateSpeed = -60.0f;
 float currentTime = 0.0f;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
-
+float timeCounter = 0.0f;
+float sceneStartTime = 0.0f;
+int scene = 0;
+int lastScene = 0;
+bool sphereActive = true;
+bool staticModelStopped = false;
+bool startCrash = false;// for scene 5,7 GS process
+float sphereT = 0.0f;
+bool startAnimation = true;
 void model_setup(){
 #if defined(__linux__) || defined(__APPLE__)
     std::string obj_path = "..\\..\\src\\asset\\obj\\Mei_Run.obj";
@@ -86,20 +98,32 @@ void model_setup(){
     std::string texture_path = "..\\..\\src\\asset\\texture\\Mei_TEX.png";
 #else
     std::string obj_path = "..\\..\\src\\asset\\obj\\v2reimu_low.obj";
+    std::string obj2_path = "..\\..\\src\\asset\\obj\\cirno_low.obj";
     std::string texture_path = "..\\..\\src\\asset\\texture\\v2reimu_low_Material_u1_v1_Base_Color.png";
+    std::string texture2_path = "..\\..\\src\\asset\\texture\\cirno_low_u1_v1.jpeg";
     std::string cube_obj_path = "..\\..\\src\\asset\\obj\\cube.obj";
+    std::string cube_texture_path = "..\\..\\src\\asset\\texture\\red-paper-texture.jpg";
 #endif
 
     staticModel = new Object(obj_path);
     staticModel->loadTexture(texture_path);
+    staticModel2 = new Object(obj2_path);
+    staticModel2->loadTexture(texture2_path);
     cubeModel = new Object(cube_obj_path);
-
+    cubeModel->loadTexture(cube_texture_path);
     modelMatrix = glm::mat4(1.0f);
     modelMatrix = glm::scale(modelMatrix, glm::vec3(10.0f));
     modelMatrix = glm::rotate(modelMatrix, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, glm::radians(260.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, -5.0f));
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, -10.0f));
+    originModelMatrix = modelMatrix;
 
+    modelMatrix2 = glm::mat4(1.0f);
+    modelMatrix2 = glm::scale(modelMatrix2, glm::vec3(10.0f));
+    modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    modelMatrix2 = glm::translate(modelMatrix2, glm::vec3(0.0f, 0.0f, -10.0f));
+    originModelMatrix2 = modelMatrix2;
 }
 
 void camera_setup(){
@@ -154,7 +178,29 @@ void material_setup(){
     material.specular = glm::vec3(0.7);
     material.gloss = 50.0;
 }
-
+int getScene(){
+    //return 8;
+    if(timeCounter < 4.0f)
+        return 1;
+    else if(timeCounter < 8.0f)
+        return 2;
+    else if(timeCounter < 11.0f)
+        return 3;
+    else if(timeCounter < 14.0f)
+        return 4;
+    else if(timeCounter < 19.0f)
+        return 5;
+    else if(timeCounter < 22.0f)
+        return 6;
+    else if(timeCounter < 27.0f)
+        return 7;
+    else if(timeCounter < 40.0f)
+        return 8;
+    else{
+        timeCounter = 0.0f;
+        return 0;
+    }
+}
 void shader_setup(){
 #if defined(__linux__) || defined(__APPLE__)
     std::string shaderDir = "..\\..\\src\\shaders\\";
@@ -234,13 +280,143 @@ void setup(){
 }
 
 void update(){
+    
     currentTime = glfwGetTime();
     deltaTime = currentTime - lastFrame;
     lastFrame = currentTime;
+    if (startAnimation) {
+        timeCounter += deltaTime;
+    }
+    lastScene = scene;
+    scene = getScene();
 
+    if(scene != lastScene){
+        staticModelStopped = false;
+        sphereActive = true;
+        sphereT = 0.0f;
+        sceneStartTime = currentTime;
+        camera.worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
+        camera.yaw = 90.0f;
+        camera.pitch = 10.0f;
+        camera.radius = 400.0f;
+        updateCamera();
+    }
     if (camera.enableAutoOrbit) {
         float yawDelta = camera.autoOrbitSpeed * deltaTime;
         applyOrbitDelta(yawDelta, 0.0f, 0.0f);
+    }
+    if (scene == 1){
+        modelMatrix2 = originModelMatrix2;
+        modelMatrix2 = glm::scale(modelMatrix2, glm::vec3(1.0f, 1.0f, 0.925f + abs(fmod(currentTime * 5.0f, 2.0f) - 1.0f) * 0.15f));
+        modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(model2RotateSpeed * currentTime), glm::vec3(0.0f, 0.0f, 1.0f));
+    }
+    if(scene == 2){
+        modelMatrix2 = originModelMatrix2;
+        modelMatrix2 = glm::translate(modelMatrix2, glm::vec3(-60.0f, 25.0f , 10.0f));
+        modelMatrix2 = glm::scale(modelMatrix2, glm::vec3(1.0f, 1.0f, 0.925f + abs(fmod(currentTime * 5.0f, 2.0f) - 1.0f) * 0.15f));
+        modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(model2RotateSpeed * currentTime), glm::vec3(0.0f, 0.0f, 1.0f));
+        modelMatrix = originModelMatrix;
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(15.0f, -5.0f ,0.0f));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(110.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        float timeInScene = currentTime - sceneStartTime;
+        float duration = 4.0f;
+        float t = glm::clamp(timeInScene / duration, 0.0f, 1.0f);
+        camera.yaw = 110.0f - (20.0f * t);
+        updateCamera();
+    }
+    if (scene == 3) {
+        modelMatrix = originModelMatrix;
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, -3.0f));
+        float timeInScene = currentTime - sceneStartTime;
+        float duration = 3.0f;
+        float t = glm::clamp(timeInScene / duration, 0.0f, 1.0f);
+        camera.yaw = 120.0f - (60.0f * t);
+        camera.radius = 100.0f;
+        updateCamera();
+    }
+    if(scene == 4 || scene == 6){
+        float timeInScene = currentTime - sceneStartTime;
+        float shootDuration = 1.0f;
+        static float rx, ry, rz;
+        static int lastChangeTime = 0;
+        static int changeInterval = 5;
+        if(changeInterval < lastChangeTime){
+            lastChangeTime = 0;
+            rx = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) * 360.0f;
+            ry = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) * 360.0f;
+            rz = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) * 360.0f;
+        }else{
+            lastChangeTime ++;
+        }
+        if (timeInScene <= shootDuration) {
+            sphereT = timeInScene / shootDuration;
+        } else {
+            sphereT = 1.0f;
+            staticModelStopped = true;
+            sphereActive = false;
+        }
+
+        modelMatrix = originModelMatrix;
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(-50.0f, 25.0f, 0.0f));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(-100.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+        modelMatrix2 = originModelMatrix2;
+        modelMatrix2 = glm::translate(modelMatrix2, glm::vec3(-50.0f, -35.0f, 0.0f));
+        if (staticModelStopped) { 
+            if(timeInScene <= 2.0f){
+                modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(300.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            }else{
+                modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
+            }
+        } else{
+            modelMatrix2 = glm::scale(modelMatrix2, glm::vec3(1.0f, 1.0f, 0.925f + abs(fmod(currentTime * 5.0f, 2.0f) - 1.0f) * 0.15f));
+            modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(model2RotateSpeed * currentTime), glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+
+        glm::vec3 startPos = glm::vec3(120.0f, 10.0f, -30.0f);
+        glm::vec3 endPos = glm::vec3(-120.0f, 10.0f, -30.0f);
+        glm::vec3 currentSpherePos = glm::mix(startPos, endPos, sphereT);
+
+        sphereMatrix = glm::mat4(1.0f);
+        sphereMatrix = glm::translate(sphereMatrix, currentSpherePos);
+        sphereMatrix = glm::scale(sphereMatrix, glm::vec3(20.0f));
+    }
+    if(scene == 5 || scene == 7){
+        float timeInScene = currentTime - sceneStartTime;
+        static float rx, ry, rz;
+        static int lastChangeTime = 0;
+        static int changeInterval = 5;
+        float rotateDuration = 1.0f;
+        if(changeInterval < lastChangeTime){
+            lastChangeTime = 0;
+            rx = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) * 360.0f;
+            ry = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) * 360.0f;
+            rz = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) * 360.0f;
+        }else{
+            lastChangeTime ++;
+        }
+        if(timeInScene <= rotateDuration){
+            startCrash = false;
+        }else{
+            startCrash = true;
+        }
+        modelMatrix2 = originModelMatrix;
+        modelMatrix2 = glm::translate(modelMatrix2, glm::vec3(-10.0f, 0.0f , 0.0f));
+        if(!startCrash){
+            modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
+        }else{
+            modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(210.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+    }
+    if(scene == 8){
+        modelMatrix2 = originModelMatrix2;
+        modelMatrix2 = glm::scale(modelMatrix2, glm::vec3(1.0f, 1.0f, 0.925f + abs(fmod(currentTime * 5.0f, 2.0f) - 1.0f) * 0.15f));
+        modelMatrix2 = glm::translate(modelMatrix2, glm::vec3(-10.0f, 16.0f , 0.0f));
+        modelMatrix2 = glm::rotate(modelMatrix2, glm::radians(model2RotateSpeed * currentTime), glm::vec3(0.0f, 0.0f, 1.0f));
+        modelMatrix = originModelMatrix2;
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(1.0f, 1.0f, 0.925f + abs(fmod(currentTime * 5.0f, 2.0f) - 1.0f) * 0.15f));
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(-10.0f, -16.0f , 0.0f));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(model2RotateSpeed * currentTime), glm::vec3(0.0f, 0.0f, 1.0f));
     }
 }
 
@@ -249,7 +425,7 @@ void render(){
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glm::mat4 view = glm::lookAt(camera.position - glm::vec3(0.0f, 0.2f, 0.1f), camera.position + camera.front, camera.up);
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 2000.0f);
 
     // set matrix for view, projection, model transformation
     shaderPrograms[shaderProgramIndex]->use();
@@ -286,11 +462,20 @@ void render(){
 
     // specifying sampler for shader program
 
-    if(isCube)
-        cubeModel->draw();
-    else
+    if(getScene() == 2 || getScene() == 3 || getScene() == 4 || getScene() == 6 || getScene() == 8){
         staticModel->draw();
-
+    }
+    shaderPrograms[shaderProgramIndex]->set_uniform_value("model", modelMatrix2);
+    if(getScene() == 1 || getScene() == 2 || getScene() == 4 || getScene() == 5 || getScene() == 6 || getScene() == 7){
+        staticModel2->draw();
+    }
+    if(getScene() == 8){
+        staticModel->draw();
+    }
+    if(getScene() == 4 && sphereActive){
+        shaderPrograms[shaderProgramIndex]->set_uniform_value("model", sphereMatrix);
+        cubeModel->draw();
+    }
     shaderPrograms[shaderProgramIndex]->release();
 
     // TODO 
@@ -361,6 +546,7 @@ int main() {
     }
 
     delete staticModel;
+    delete staticModel2;
     delete cubeModel;
     for (auto shader : shaderPrograms) {
         delete shader;
@@ -378,7 +564,7 @@ void processInput(GLFWwindow *window) {
     glm::vec2 orbitInput(0.0f);
     float zoomInput = 0.0f;
 
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    /*if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         orbitInput.x += 1.0f;
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         orbitInput.x -= 1.0f;
@@ -389,8 +575,9 @@ void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         zoomInput -= 1.0f;
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        zoomInput += 1.0f;
-
+        zoomInput += 1.0f;*/
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+        startAnimation = true;
     if (orbitInput.x != 0.0f || orbitInput.y != 0.0f || zoomInput != 0.0f) {
         float yawDelta = orbitInput.x * camera.orbitRotateSpeed * deltaTime;
         float pitchDelta = orbitInput.y * camera.orbitRotateSpeed * deltaTime;
