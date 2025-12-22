@@ -197,7 +197,7 @@ void material_setup(){
     material.gloss = 50.0;
 }
 int getScene(){
-    //return 8;
+    //return 6;
     if(timeCounter < 4.0f)
         return 1;
     else if(timeCounter < 8.0f)
@@ -524,7 +524,7 @@ void render(){
     if(getScene() == 8){
         staticModel->draw();
     }
-    if(getScene() == 4 && sphereActive){
+    if((getScene() == 4 || getScene() == 6) && sphereActive){
         shaderPrograms[shaderProgramIndex]->set_uniform_value("model", sphereMatrix);
         cubeModel->draw();
     }
