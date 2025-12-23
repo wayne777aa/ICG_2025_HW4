@@ -90,7 +90,7 @@ bool sphereActive = true;
 bool staticModelStopped = false;
 bool startCrash = false;// for scene 5,7 GS process
 float sphereT = 0.0f;
-bool startAnimation = true;
+bool startAnimation = false;
 
 // explosion effect parameters
 float explodeBlastTime = 0.6f;
@@ -123,7 +123,7 @@ float s7CollapseStart = 0.0f;
 // wire frame mode
 shader_program_t* wireShader = nullptr;
 float wireWidth = 1.0f;
-glm::vec3 wireColor = glm::vec3(0.9f, 0.4f, 0.1f);
+glm::vec3 wireColor = glm::vec3(0.1f, 0.5f, 0.9f);
 
 void model_setup(){
 #if defined(__linux__) || defined(__APPLE__)
@@ -292,18 +292,18 @@ void cubemap_setup(){
     std::string cubemapDir = "..\\..\\src\\asset\\texture\\skybox\\";
     std::string shaderDir = "..\\..\\src\\shaders\\";
 #else
-    std::string cubemapDir = "..\\..\\src\\asset\\texture\\skybox\\";
+    std::string cubemapDir = "..\\..\\src\\asset\\texture\\tonhou\\";
     std::string shaderDir = "..\\..\\src\\shaders\\";
 #endif
 
     std::vector<std::string> faces
     {
-        cubemapDir + "right.jpg",
-        cubemapDir + "left.jpg",
-        cubemapDir + "top.jpg",
-        cubemapDir + "bottom.jpg",
-        cubemapDir + "front.jpg",
-        cubemapDir + "back.jpg"
+        cubemapDir + "px.jpg",
+        cubemapDir + "nx.jpg",
+        cubemapDir + "py.jpg",
+        cubemapDir + "ny.jpg",
+        cubemapDir + "pz.jpg",
+        cubemapDir + "nz.jpg"
     };
     cubemapTexture = loadCubemap(faces);   
 
